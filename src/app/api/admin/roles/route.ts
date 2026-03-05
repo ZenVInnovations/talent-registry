@@ -25,9 +25,9 @@ export async function GET(_req: NextRequest) {
     });
 
     return NextResponse.json({
-      data: roles.map((r) => ({
+      data: roles.map((r: typeof roles[number]) => ({
         ...r,
-        permissions: r.permissions.map((p) => p.permission),
+        permissions: r.permissions.map((p: { permission: string }) => p.permission),
         memberCount: r._count.memberRoles,
       })),
     });
