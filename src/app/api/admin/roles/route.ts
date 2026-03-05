@@ -24,10 +24,16 @@ export async function GET(_req: NextRequest) {
       orderBy: { position: 'asc' },
     });
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return NextResponse.json({
-      data: roles.map((r: typeof roles[number]) => ({
-        ...r,
-        permissions: r.permissions.map((p: { permission: string }) => p.permission),
+      data: roles.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        description: r.description,
+        scope: r.scope,
+        isDefault: r.isDefault,
+        position: r.position,
+        permissions: r.permissions.map((p: any) => p.permission),
         memberCount: r._count.memberRoles,
       })),
     });
