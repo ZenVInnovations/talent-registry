@@ -1,0 +1,414 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Authentication (NextAuth pattern from Challenge Registry) ──
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  image         String?
+  emailVerified DateTime?
+  accounts      Account[]
+  sessions      Session[]
+  members       Member[]
+  studentProfile StudentProfile?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ── RBAC (reuse Challenge Registry pattern) ──
+
+model Member {
+  id          String       @id @default(cuid())
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  employerId  String?
+  employer    Employer?    @relation(fields: [employerId], references: [id], onDelete: Cascade)
+  memberRoles MemberRole[]
+  createdAt   DateTime     @default(now())
+
+  @@unique([userId, employerId])
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique @db.VarChar(50)
+  scope       RoleScope        @default(GLOBAL)
+  isBuiltIn   Boolean          @default(false)
+  isDefault   Boolean          @default(false)
+  position    Int              @default(0)
+  permissions RolePermission[]
+  memberRoles MemberRole[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+}
+
+model MemberRole {
+  id       String @id @default(cuid())
+  memberId String
+  member   Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  roleId   String
+  role     Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([memberId, roleId])
+}
+
+model RolePermission {
+  id         String @id @default(cuid())
+  roleId     String
+  role       Role   @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission String @db.VarChar(100)
+
+  @@unique([roleId, permission])
+}
+
+enum RoleScope {
+  GLOBAL
+  EMPLOYER
+}
+
+// ── Core Domain ──
+
+model StudentProfile {
+  id                  String    @id @default(cuid())
+  userId              String    @unique
+  user                User      @relation(fields: [userId], references: [id])
+  anonymizedId        String    @unique
+  displayName         String?
+  email               String?
+  phone               String?
+  institutionId       String?
+  institutionName     String?
+  domains             String[]
+  projectCount        Int       @default(0)
+  completedProjectIds String[]
+  technologies        String[]
+  badgeSummary        Json?
+  skillScores         Json?
+  certificateCount    Int       @default(0)
+  resumeUrl           String?
+  profileVisible      Boolean   @default(false)
+  consentVersion      Int       @default(0)
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+  consents            Consent[]
+  applications        Application[]
+  matchScores         MatchScore[]
+
+  @@index([institutionId])
+  @@index([profileVisible])
+  @@index([deletedAt])
+}
+
+model Consent {
+  id                String         @id @default(cuid())
+  profileId         String
+  profile           StudentProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  fieldConsents     Json
+  employerOverrides Json?
+  version           Int            @default(1)
+  createdAt         DateTime       @default(now())
+
+  @@index([profileId, version(sort: Desc)])
+}
+
+model Employer {
+  id                 String             @id @default(cuid())
+  companyName        String
+  companySector      String
+  companySize        String
+  website            String?
+  logoUrl            String?
+  contactName        String
+  contactEmail       String
+  contactPhone       String?
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedByUserId   String?
+  verifiedAt         DateTime?
+  bdAssigneeUserId   String?
+  members            Member[]
+  jobs               Job[]
+  applications       Application[]
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  deletedAt          DateTime?
+
+  @@index([verificationStatus])
+  @@index([deletedAt])
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Job {
+  id                  String    @id @default(cuid())
+  employerId          String
+  employer            Employer  @relation(fields: [employerId], references: [id])
+  title               String
+  description         String    @db.Text
+  type                JobType
+  domain              String
+  requiredSkills      String[]
+  preferredSkills     String[]
+  location            String?
+  remote              Boolean   @default(false)
+  salaryRange         Json?
+  openPositions       Int       @default(1)
+  status              JobStatus @default(DRAFT)
+  sourceOpportunityId String?
+  externalSourceId    String?
+  externalSourceName  String?
+  screeningRequired   Boolean   @default(false)
+  screeningSkillIds   String[]
+  postedAt            DateTime?
+  closesAt            DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  deletedAt           DateTime?
+  applications        Application[]
+  matchScores         MatchScore[]
+
+  @@index([employerId])
+  @@index([status])
+  @@index([domain])
+  @@index([deletedAt])
+}
+
+enum JobType {
+  INTERNSHIP
+  PLACEMENT
+  FULL_TIME
+  CONTRACT
+}
+
+enum JobStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CLOSED
+  FILLED
+}
+
+model Application {
+  id                String            @id @default(cuid())
+  jobId             String
+  job               Job               @relation(fields: [jobId], references: [id])
+  profileId         String
+  profile           StudentProfile    @relation(fields: [profileId], references: [id])
+  employerId        String
+  employer          Employer          @relation(fields: [employerId], references: [id])
+  status            ApplicationStatus @default(SUBMITTED)
+  coverLetter       String?           @db.Text
+  customAnswers     Json?
+  matchScoreAtApply Decimal?          @db.Decimal(5, 2)
+  screeningId       String?
+  screeningScore    Decimal?          @db.Decimal(5, 2)
+  statusHistory     Json              @default("[]")
+  submittedAt       DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  deletedAt         DateTime?
+  placement         Placement?
+
+  @@index([jobId])
+  @@index([profileId])
+  @@index([employerId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  SCREENING_REQUESTED
+  SCREENING_COMPLETED
+  SHORTLISTED
+  INTERVIEW_SCHEDULED
+  OFFERED
+  ACCEPTED
+  DECLINED_BY_STUDENT
+  REJECTED
+  WITHDRAWN
+}
+
+model MatchScore {
+  id              String         @id @default(cuid())
+  jobId           String
+  job             Job            @relation(fields: [jobId], references: [id])
+  profileId       String
+  profile         StudentProfile @relation(fields: [profileId], references: [id])
+  overallScore    Decimal        @db.Decimal(5, 2)
+  dimensionScores Json
+  explanation     String         @db.Text
+  stale           Boolean        @default(false)
+  computedAt      DateTime       @default(now())
+  expiresAt       DateTime
+
+  @@unique([jobId, profileId])
+  @@index([overallScore(sort: Desc)])
+}
+
+model Placement {
+  id                  String          @id @default(cuid())
+  applicationId       String          @unique
+  application         Application     @relation(fields: [applicationId], references: [id])
+  type                JobType
+  startDate           DateTime
+  endDate             DateTime?
+  status              PlacementStatus @default(ACTIVE)
+  sourceOpportunityId String?
+  recordedAt          DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  deletedAt           DateTime?
+
+  @@index([status])
+}
+
+enum PlacementStatus {
+  ACTIVE
+  COMPLETED
+  TERMINATED
+}
+
+// ── Audit & System ──
+
+model AuditLog {
+  id            String   @id @default(cuid())
+  eventType     String   @db.VarChar(256)
+  entityType    String   @db.VarChar(128)
+  entityId      String
+  actorUserId   String?
+  actorRole     String?  @db.VarChar(64)
+  actorIp       String?
+  beforeState   Json?
+  afterState    Json?
+  metadata      Json?
+  correlationId String?
+  createdAt     DateTime @default(now())
+
+  @@index([entityType, entityId, createdAt(sort: Desc)])
+  @@index([actorUserId, createdAt(sort: Desc)])
+  @@index([eventType, createdAt(sort: Desc)])
+}
+
+model ProcessedEvent {
+  id             String   @id @default(cuid())
+  consumerGroup  String
+  idempotencyKey String
+  eventType      String
+  processedAt    DateTime @default(now())
+
+  @@unique([consumerGroup, idempotencyKey])
+  @@index([processedAt])
+}
+
+model RetentionJobRun {
+  id                String    @id @default(cuid())
+  runStartedAt      DateTime
+  runCompletedAt    DateTime?
+  phase             String
+  recordsProcessed  Int       @default(0)
+  recordsAnonymized Int       @default(0)
+  recordsDeleted    Int       @default(0)
+  errors            Json?
+  status            String    @default("RUNNING")
+
+  @@index([status, runStartedAt(sort: Desc)])
+}
+
+// ── Notifications ──
+
+model Notification {
+  id        String   @id @default(cuid())
+  type      String
+  title     String
+  message   String
+  link      String?
+  userId    String
+  read      Boolean  @default(false)
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([userId, read, createdAt(sort: Desc)])
+}
+
+// ── Analytics (PII-Free, Retained Indefinitely) ──
+
+model AnalyticsApplicationDaily {
+  date              DateTime @db.Date
+  employerId        String
+  domain            String   @db.VarChar(128)
+  institutionBucket String   @db.VarChar(128)
+  applicationCount  Int      @default(0)
+  shortlistedCount  Int      @default(0)
+  offeredCount      Int      @default(0)
+  acceptedCount     Int      @default(0)
+  avgMatchScore     Decimal? @db.Decimal(5, 2)
+
+  @@id([date, employerId, domain, institutionBucket])
+}
+
+model AnalyticsPlacementMonthly {
+  month          DateTime @db.Date
+  employerSector String   @db.VarChar(128)
+  domain         String   @db.VarChar(128)
+  placementType  String   @db.VarChar(32)
+  placementCount Int      @default(0)
+
+  @@id([month, employerSector, domain, placementType])
+}
+
+model AnalyticsSkillDemandWeekly {
+  weekStart        DateTime @db.Date
+  skillName        String   @db.VarChar(256)
+  jobsRequiring    Int      @default(0)
+  applicationsWith Int      @default(0)
+  avgScore         Decimal? @db.Decimal(5, 2)
+
+  @@id([weekStart, skillName])
+}
