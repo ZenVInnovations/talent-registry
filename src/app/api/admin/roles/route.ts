@@ -7,6 +7,21 @@ import { AuthorizationService } from '@/lib/authorization/service';
 import { ADMIN } from '@/lib/permissions/constants';
 import { errorToResponse } from '@/lib/errors';
 
+interface RolePermission {
+  permission: string;
+}
+
+interface RoleWithPermissions {
+  id: string;
+  name: string;
+  description: string | null;
+  scope: string;
+  isDefault: boolean;
+  position: number;
+  permissions: RolePermission[];
+  _count: { memberRoles: number };
+}
+
 export async function GET(_req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -24,16 +39,15 @@ export async function GET(_req: NextRequest) {
       orderBy: { position: 'asc' },
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return NextResponse.json({
-      data: roles.map((r: any) => ({
+      data: (roles as unknown as RoleWithPermissions[]).map((r) => ({
         id: r.id,
         name: r.name,
         description: r.description,
         scope: r.scope,
         isDefault: r.isDefault,
         position: r.position,
-        permissions: r.permissions.map((p: any) => p.permission),
+        permissions: r.permissions.map((p) => p.permission),
         memberCount: r._count.memberRoles,
       })),
     });
